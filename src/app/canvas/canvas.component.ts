@@ -48,7 +48,10 @@ const SELECTION_INNER_COLOR = '#2196f3';
 })
 export class CanvasComponent implements AfterViewInit, OnDestroy {
   @Input() canvasType: CanvasType;
+  @ViewChild('canvasContainer') private canvasContainerRef: ElementRef;
   @ViewChild('renderingCanvas') private renderingCanvasRef: ElementRef;
+  @ViewChild('labeledPointCanvas') private labeledPointCanvasRef: ElementRef;
+  @ViewChild('pixelGridCanvas') private pixelGridCanvasRef: ElementRef;
   @ViewChildren(CanvasRulerDirective) canvasRulers: QueryList<CanvasRulerDirective>;
 
   private vectorLayer: VectorLayer;
@@ -59,7 +62,10 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   private vlWidth = DEFAULT_VIEWPORT_SIZE;
   private vlHeight = DEFAULT_VIEWPORT_SIZE;
   private element: JQuery;
-  private canvas: JQuery;
+  private canvasContainer;
+  private renderingCanvas: JQuery;
+  private labeledPointCanvas: JQuery;
+  private pixelGridCanvas: JQuery;
   private offscreenCanvas: JQuery;
   private cssScale: number;
   private attrScale: number;
@@ -85,7 +91,10 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit() {
     this.isViewInit = true;
     this.element = $(this.elementRef.nativeElement);
-    this.canvas = $(this.renderingCanvasRef.nativeElement);
+    this.canvasContainer = $(this.canvasContainerRef.nativeElement);
+    this.renderingCanvas = $(this.renderingCanvasRef.nativeElement);
+    this.labeledPointCanvas = $(this.labeledPointCanvasRef.nativeElement);
+    this.pixelGridCanvas = $(this.pixelGridCanvasRef.nativeElement);
     this.offscreenCanvas = $(document.createElement('canvas'));
     this.subscriptions.push(
       this.layerStateService.getVectorLayerObservable(this.canvasType).subscribe(vl => {
@@ -219,23 +228,41 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
     const cssWidth = this.vlWidth * this.cssScale;
     const cssHeight = this.vlHeight * this.cssScale;
-    [this.canvas, this.offscreenCanvas].forEach(canvas => {
-      canvas
-        .attr({
-          width: cssWidth * devicePixelRatio,
-          height: cssHeight * devicePixelRatio,
-        })
-        .css({
-          width: cssWidth,
-          height: cssHeight,
-        });
-    });
+    [this.canvasContainer, this.renderingCanvas, this.labeledPointCanvas, this.pixelGridCanvas, this.offscreenCanvas]
+      .forEach(canvas => {
+        canvas
+          .attr({
+            width: cssWidth * devicePixelRatio,
+            height: cssHeight * devicePixelRatio,
+          })
+          .css({
+            width: cssWidth,
+            height: cssHeight,
+          });
+      });
 
     // TODO: set a min amount of pixels to use as the radius.
     const size = Math.min(this.cssContainerWidth, this.cssContainerHeight);
     this.pathPointRadius = size * SIZE_TO_POINT_RADIUS_FACTOR / Math.max(2, this.cssScale);
     this.splitPathPointRadius = this.pathPointRadius * SPLIT_POINT_RADIUS_FACTOR;
+
     this.draw();
+
+    const labeledPointCtx = (this.labeledPointCanvas.get(0) as HTMLCanvasElement).getContext('2d');
+    // Scale the canvas so that everything from this point forward is drawn
+    // in terms of viewport coordinates.
+    labeledPointCtx.save();
+    labeledPointCtx.scale(this.attrScale, this.attrScale);
+    labeledPointCtx.clearRect(0, 0, this.vlWidth, this.vlHeight);
+    if (this.shouldDrawLayer) {
+      this.drawLabeledPoints(labeledPointCtx);
+      this.drawDraggingPoints(labeledPointCtx);
+    }
+    labeledPointCtx.restore();
+
+    // Note that we do not draw the pixel grid in viewport coordinates as we do elsewhere.
+    this.drawPixelGrid((this.pixelGridCanvas.get(0) as HTMLCanvasElement).getContext('2d'));
+
     this.canvasRulers.forEach(r => r.draw());
   }
 
@@ -243,7 +270,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     if (!this.isViewInit) {
       return;
     }
-    const ctx = (this.canvas.get(0) as HTMLCanvasElement).getContext('2d');
+    const ctx = (this.renderingCanvas.get(0) as HTMLCanvasElement).getContext('2d');
     const offscreenCtx = (this.offscreenCanvas.get(0) as HTMLCanvasElement).getContext('2d');
 
     ctx.save();
@@ -266,8 +293,8 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
     if (this.shouldDrawLayer) {
       this.drawVectorLayer(drawingCtx);
       this.drawSelections(drawingCtx);
-      this.drawLabeledPoints(drawingCtx);
-      this.drawDraggingPoints(drawingCtx);
+      //this.drawLabeledPoints(drawingCtx);
+      //this.drawDraggingPoints(drawingCtx);
     }
 
     if (currentAlpha < 1) {
@@ -281,12 +308,6 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
       offscreenCtx.restore();
     }
     ctx.restore();
-
-    // Note that we do not draw the pixel grid in viewport coordinates
-    // as we do above.
-    if (this.cssScale > 4) {
-      this.drawPixelGrid(ctx);
-    }
   }
 
   // Draw the layers to the canvas.
@@ -564,24 +585,33 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
 
   // Draw the pixel grid.
   private drawPixelGrid(ctx: CanvasRenderingContext2D) {
+    // Scale the canvas so that everything from this point forward is drawn
+    // in terms of viewport coordinates.
     ctx.save();
-    const devicePixelRatio = window.devicePixelRatio || 1;
-    ctx.fillStyle = 'rgba(128, 128, 128, .25)';
-    for (let x = 1; x < this.vlWidth; x++) {
-      ctx.fillRect(
-        x * this.attrScale - 0.5 * devicePixelRatio,
-        0,
-        devicePixelRatio,
-        this.vlHeight * this.attrScale);
-    }
-    for (let y = 1; y < this.vlHeight; y++) {
-      ctx.fillRect(
-        0,
-        y * this.attrScale - 0.5 * devicePixelRatio,
-        this.vlWidth * this.attrScale,
-        devicePixelRatio);
-    }
+    ctx.scale(this.attrScale, this.attrScale);
+    ctx.clearRect(0, 0, this.vlWidth, this.vlHeight);
     ctx.restore();
+
+    if (this.cssScale > 4) {
+      ctx.save();
+      const devicePixelRatio = window.devicePixelRatio || 1;
+      ctx.fillStyle = 'rgba(128, 128, 128, .25)';
+      for (let x = 1; x < this.vlWidth; x++) {
+        ctx.fillRect(
+          x * this.attrScale - 0.5 * devicePixelRatio,
+          0,
+          devicePixelRatio,
+          this.vlHeight * this.attrScale);
+      }
+      for (let y = 1; y < this.vlHeight; y++) {
+        ctx.fillRect(
+          0,
+          y * this.attrScale - 0.5 * devicePixelRatio,
+          this.vlWidth * this.attrScale,
+          devicePixelRatio);
+      }
+      ctx.restore();
+    }
   }
 
   onMouseDown(event: MouseEvent) {
@@ -800,7 +830,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
   }
 
   private showRuler(event: MouseEvent) {
-    const canvasOffset = this.canvas.offset();
+    const canvasOffset = this.renderingCanvas.offset();
     const x = (event.pageX - canvasOffset.left) / Math.max(1, this.cssScale);
     const y = (event.pageY - canvasOffset.top) / Math.max(1, this.cssScale);
     this.canvasRulers.forEach(r => r.showMouse(new Point(_.round(x), _.round(y))));
@@ -810,7 +840,7 @@ export class CanvasComponent implements AfterViewInit, OnDestroy {
    * Converts a mouse point's CSS coordinates into vector layer viewport coordinates.
    */
   private mouseEventToPoint(event: MouseEvent) {
-    const canvasOffset = this.canvas.offset();
+    const canvasOffset = this.renderingCanvas.offset();
     const x = (event.pageX - canvasOffset.left) / this.cssScale;
     const y = (event.pageY - canvasOffset.top) / this.cssScale;
     return new Point(x, y);

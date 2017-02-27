@@ -13,9 +13,24 @@
     opacity: 1;
     visibility: visible;
   }
-  canvas.rendering-canvas {
-    background-color: #fff;
-    box-shadow: material-shadow(2);
+  .canvas-container {
+    position: relative;
+    canvas.rendering-canvas {
+      position: absolute;
+      background-color: #fff;
+      box-shadow: material-shadow(2);
+      z-index: 1;
+    }
+    canvas.labeled-point-canvas {
+      position: absolute;
+      background-color: transparent;
+      z-index: 2;
+    }
+    canvas.pixel-grid-canvas {
+      position: absolute;
+      background-color: transparent;
+      z-index: 3;
+    }
   }
   $rulerWidth: 32px;
   .orientation-horizontal {
@@ -29,4 +44,3 @@
     width: $rulerWidth;
   }
 }
-
