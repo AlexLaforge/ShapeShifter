@@ -6,6 +6,7 @@
   Design tools often output bloated SVG source code with tons of unnecessary
   commands, so simplifying these SVGs beforehand will make them
   much easier to work with.
+  ([#15](https://github.com/alexjlockwood/ShapeShifter/issues/15))
 * Selection/hover events in one canvas are now mirrored in the other canvas, making it easier
   to understand which points will animate where.
   ([#30](https://github.com/alexjlockwood/ShapeShifter/issues/30))
@@ -15,6 +16,7 @@
 
 * SVG importer can now properly parse SVGs containing `<style>`
   tags and/or inline `style` attributes.
+  ([#14](https://github.com/alexjlockwood/ShapeShifter/issues/14))
 * SVG importer now correctly detects inherited attributes set on
   `<svg>` and/or `<g>` nodes and properly assigns them to their
   children `<path>` nodes.
